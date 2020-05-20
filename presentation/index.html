@@ -1,0 +1,332 @@
+<!doctype html>
+<html>
+
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+	<title>Language-agnostic Injection Detection</title>
+
+	<link rel="stylesheet" href="css/reset.css">
+	<link rel="stylesheet" href="css/reveal.css">
+	<link rel="stylesheet" href="css/theme/black.css">
+
+	<!-- Theme used for syntax highlighting of code -->
+	<link rel="stylesheet" href="lib/css/monokai.css">
+
+	<!-- Printing and PDF exports -->
+	<script>
+		var link = document.createElement('link');
+		link.rel = 'stylesheet';
+		link.type = 'text/css';
+		link.href = window.location.search.match(/print-pdf/gi) ? 'css/print/pdf.css' : 'css/print/paper.css';
+		document.getElementsByTagName('head')[0].appendChild(link);
+	</script>
+</head>
+
+<body>
+	<div class="reveal">
+		<div class="slides">
+			<section>
+				<h3>Language-agnostic Injection Detection</h3>
+				<p>Lars Hermerschmidt, Andreas Straub, Goran Piskachev</p>
+				<p style="text-align: right;"><small>injections grow on trees</small></p>
+
+
+				<aside class="notes">
+					We will show you:<br/> - How we can detect injection vulnerabilities in Recursive descent unparsers.<br/> Idea: Dynamic
+					analysis to extract UPT<br/> -> improve fuzzing with keywords (from UPT By identifying static unparser output structurally,
+					we identify keywords)
+				</aside>
+
+				<img src="1-injection-example.jpg" style="display: inline-block;  vertical-align: middle;">
+				<img src="logo.png" style="display: inline-block;  vertical-align: middle;">
+
+			</section>
+			<section>
+				<h2>Shotgun Unparser</h2>
+
+				<pre><code class="c" data-line-numbers="4,11">if (recursive || print_dir_name)
+{
+if (!first)
+	DIRED_PUTCHAR ('\n');
+first = false;
+DIRED_INDENT ();
+PUSH_CURRENT_DIRED_POS (&subdired_obstack);
+dired_pos += quote_name (stdout, realname ? realname : name,
+			dirname_quoting_options, NULL);
+PUSH_CURRENT_DIRED_POS (&subdired_obstack);
+DIRED_FPUTS_LITERAL (":\n", stdout);
+}
+				</code></pre>
+				<p style="text-align: right;"><small><a href="https://github.com/wertarbyte/coreutils/blob/master/src/ls.c">https://github.com/wertarbyte/coreutils/blob/master/src/ls.c</a></small></p>
+				<pre><code class="bash" data-line-numbers="">mkdir "1
+1"
+mkdir 2
+ls | wc -l</code></pre>
+			</section>
+			<section>
+				<h2>Why do injections exist?</h2>
+				<div style="text-align: left;">
+					<ul>
+						<li>Shotgun Unparsers cause Injection Vulnerabilities</li>
+					</ul>
+
+					<div class="fragment fade-in" style="text-align: left; font-style:italic;">But why?</div>
+					<!--<div style="text-align: left; font-style:italic;">Why not use correct Unparser Generator?</div>-->
+					<ul>
+						<li class="fragment fade-in">Correct Unparser Generators are not used</li>
+					</ul>
+
+					<div class="fragment fade-in" style="text-align: left; font-style:italic;">But why?</div>
+					<ul>
+						<li class="fragment fade-in">IO is "soo simple", let's just use the core libs</li>
+					</ul>
+
+					<div class="fragment fade-in" style="text-align: left; font-style:italic;">But why?</div>
+					<ul>
+						<li class="fragment fade-in">Core libs don't provide secure input handling</li>
+					</ul>
+
+					<div class="fragment fade-in" style="text-align: left; font-style:italic;">But why?</div>
+					<ul>
+						<li class="fragment fade-in">Lacking Awareness for the problem</li>
+					</ul>
+
+					<div class="fragment fade-in" style="text-align: left; font-style:italic;">But why?</div>
+					<ul>
+						<li class="fragment fade-in">Core libs don't provide secure input handling</li>
+					</ul>
+
+				</div>
+				<aside class="notes">End: We want to raise awareness for the general problem: See Formal problem definition in the paper</aside>
+			</section>
+			<section>
+				<h2>Related Work</h2>
+				<ul>
+					<li>Language specific static and dynamic analysis:
+						<br/>SQLi, XSS, ... are well known
+					</li>
+					<li>Language agnostic dynamic aka fuzzing:
+						<br/>Parsers are known to be broken
+					</li>
+					<li>AUTOGRAM uses dynamic taint tracking:
+						<br/>Grammar reconstruction from a given parser
+					</li>
+				</ul>
+				<p>Our contribution: Language agnostic detection of injections for textual languages<br/> Awareness
+				</p>
+				<div style="text-decoration: underline"><small>Detection is never complete; Use a constructive approach like <a href="https://github.com/McHammerCoder/McHammerCoder">McHammerCoder</a>
+						to solve the injection problem.</small></div>
+				<aside class="notes">End:<br/>
+					- Solve the Injection Problem constructively.<br/>
+					- Awareness -> Andreas will show you our approach</aside>
+			</section>
+
+			<section>
+				<h2>The Solution</h2>
+				<div style="font-style:italic;">Show, don't tell</div>
+				<aside class="notes">
+					Raising awareness is like telling a captivating story: show, don't tell. This requires near-universal applicability. Enter:
+					Language-agnostic injection detection Five why's reverse:
+					<ul>
+						<li>Language-agnostic Injection Detection</li>
+						<li>Awareness</li>
+						<li>Core libs provide secure input handling</li>
+						<li>No more Shotgun Unparsers</li>
+						<li>No more Injection Vulnerabilities</li>
+					</ul>
+				</aside>
+			</section>
+			<section>
+				<h2>Problem space</h2>
+				<ul>
+					<li>Detecting unparsers</li>
+					<li><b>Identifying injections in a given unparser</b></li>
+					<li>Generate attacks</li>
+					<li>Extract full grammar</li>
+				</ul>
+			</section>
+
+			<section>
+				<h2>Approach Overview</h2>
+				<ul>
+					<li>Guided fuzzing using language keyword information</li>
+					<li>Keywords are extracted from unparse trees (UPTs)</li>
+					<li>UPTs are inferred automatically using dynamic program analysis</li>
+				</ul>
+				<img src="overview_approach_inv.png" style="max-width: 80%; vertical-align: middle; background-color: rgba(25, 25, 25, 1.0); border:none; box-shadow:none; padding: 0.5em; margin-top:1em;">
+				<aside class="notes">
+					We use: Textual languages rely on keywords to separate contexts Binary languages use length fields -> different approach
+					needed
+				</aside>
+			</section>
+
+			<section data-transition="slide-in fade-out">
+				<h2>UPT Inference</h2>
+				<!--
+				<div style="text-align:left">
+				<ul>
+					<li class="fragment fade-in-then-semi-out" data-fragment-index="0">collect call trace</li>
+					<li class="fragment fade-in-then-semi-out" data-fragment-index="1">reconstruct call tree</li>
+					<li class="fragment fade-in-then-semi-out" data-fragment-index="2">mine UPT</li>
+					<small class="fragment" data-fragment-index="2">
+					<ul>
+						<li>decompose return values</li>
+						<li>arguments, attributes , sub-calls</li>
+					</ul>
+					</small>
+				</ul>
+				</div>
+				-->
+
+
+				<img src="upts_overview_inv.png" style="max-width: 80%; vertical-align: middle; background-color: rgba(25, 25, 25, 1.0); border:none; box-shadow:none; padding: 0.5em; margin-top:0.5em;">
+				<!--<img src="upts_trace.png" style="max-width: 80%; vertical-align: middle; background-color: rgba(255, 255, 255, 1.0); padding: 0.5em; margin-top:1em;"  class="fragment step-fade-in-then-out" data-fragment-index="0">
+				<img src="upts_track.png" style="max-width: 80%; vertical-align: middle; background-color: rgba(255, 255, 255, 1.0); padding: 0.5em; margin-top:1em;"  class="fragment step-fade-in-then-out" data-fragment-index="1">
+				<img src="upts_mine.png" style="max-width: 80%; vertical-align: middle; background-color: rgba(255, 255, 255, 1.0); padding: 0.5em; margin-top:1em;"  class="fragment step-fade-in-then-out" data-fragment-index="2">-->
+			</section>
+
+
+			<section data-transition="fade-in fade-out">
+				<h2>UPT Inference</h2>
+				<img src="upts_trace_inv_example.png" style="max-width: 80%; vertical-align: middle; background-color: rgba(25, 25, 25, 1.0); border:none; box-shadow:none; padding: 0.5em; margin-top:0.5em;">
+			</section>
+			<section data-transition="fade-in fade-out">
+				<h2>UPT Inference</h2>
+				<img src="upts_track_inv_example.png" style="max-width: 80%; vertical-align: middle; background-color: rgba(25, 25, 25, 1.0); border:none; box-shadow:none; padding: 0.5em; margin-top:0.5em;">
+			</section>
+			<section data-transition="fade-in slide-out">
+				<h2>UPT Inference</h2>
+				<img src="upts_mine_inv_example.png" style="max-width: 80%; vertical-align: middle; background-color: rgba(25, 25, 25, 1.0); border:none; box-shadow:none; padding: 0.5em; margin-top:0.5em;">
+			</section>
+
+			<section>
+				<h2>UPTs and Keywords</h2>
+				<img src="url_tree_inv.png" style="vertical-align: middle; background-color: rgba(25, 25, 25, 1.0); border:none; box-shadow:none; padding: 0.5em;">
+				<ul>
+					<li>Keywords have no origin in any input</li>
+					<li>They are created by the unparser</li>
+					<li>Their location in the UPT shows where (structurally) they are valid in the language</li>
+				</ul>
+				</textarea>
+			</section>
+
+			<section>
+				<h2>Fuzzing</h2>
+				<ul>
+					<li>generate targeted injection candidates based on keywords</li>
+					<ul>
+						<small>
+							<li>example: "break out" of string-enclosing quotation marks</li>
+						</small>
+					</ul>
+					<li>evaluate injection success by comparing parse trees</li>
+					<small>
+						<ul>
+							<li>run both original input and modified input through unparser-parser round-trip</li>
+							<li>compare structures of resulting parse trees</li>
+							<ul>
+								<li>if the parse tree changed, an injection was found</li>
+							</ul>
+						</ul>
+					</small>
+				</ul>
+
+				<img src="fuzz_inv.png" style="vertical-align: middle; background-color: rgba(25, 25, 25, 1.0); border:none; box-shadow:none; padding: 0.5em;">
+
+				<aside class="notes">
+					"shaking the unparse tree"
+				</aside>
+
+			</section>
+
+			<!-- BENEFITS -->
+			<section>
+				<h2>Results</h2>
+				<ul>
+					<li>Promising results in case studies</li>
+					<ul>
+						<li>very accurate UPTs</li>
+						<li>found (implanted) injection vulnerabilities</li>
+						<li>structural keyword information can significantly improve fuzzing</li>
+						<li>caveat: not a quantitative evaluation</li>
+					</ul>
+					<li>Fuzzing automatically yields PoC exploits</li>
+				</ul>
+				</textarea>
+			</section>
+
+			<section>
+				<h2>Key Observations</h2>
+				<ul>
+					<li>"Recursive descent unparsers" exist</li>
+					<ul>
+						<li>common in ad-hoc implementations</li>
+					</ul>
+					<li>Difference to Taint Tracking:</li>
+					<ul>
+						<li>leveraging <strong>structural</strong> information to identify keywords and their scope</li>
+					</ul>
+					<li>Requires structural variability in unparser outputs</li>
+					<ul>
+						<li>poor UPTs in "template-based" unparsers</li>
+						<li>reduced to common taint tracking</li>
+						<li>better use a sample output for mutation fuzzing</li>
+					</ul>
+			</section>
+
+			<section>
+				<h2>Conclusion</h2>
+				<p>
+					<div style="text-decoration: underline">Language-agnostic Injection Detection</div>
+					<ul>
+						<li>works for recursive descent unparsers</li>
+						<li>use keywords from UPTs in fuzzing</li>
+					</ul>
+				</p>
+				<p>
+					<div style="text-decoration: underline">Awareness</div>
+					<ul>
+						<li>Creating output is not just writing an array of bytes</li>
+						<li>Injections might exist in all your unparses</li>
+					</ul>
+				</p>
+				<p>
+					<div style="text-decoration: underline">Call to Action</div>
+					Every programming language's core library deserves an (un)parser
+
+				</p>
+				<aside class="notes">works for: textual languages</aside>
+			</section>
+
+			<section>
+				<h1>Questions?</h1>
+				<p>Lars: <a href="https://twitter.com/bob5ec">@bob5ec on Twitter</a></p>
+				<p>Andreas: <a href="mailto:andy@strb.org">andy@strb.org</a></p>
+				<p><a href="https://github.com/McHammerCoder/margotua">MARGOTUA code on GitHub (soon)</a></p>
+			</section>
+		</div>
+	</div>
+
+	<script src="js/reveal.js"></script>
+
+	<script>
+		// More info about config & dependencies:
+		// - https://github.com/hakimel/reveal.js#configuration
+		// - https://github.com/hakimel/reveal.js#dependencies
+		Reveal.initialize({
+			hash: true,
+			dependencies: [
+				{ src: 'plugin/markdown/marked.js' },
+				{ src: 'plugin/markdown/markdown.js' },
+				{ src: 'plugin/highlight/highlight.js' },
+				{ src: 'plugin/notes/notes.js', async: true }
+			]
+		});
+		// Shows the slide number using default formatting
+		Reveal.configure({ slideNumber: true });
+	</script>
+</body>
+
+</html>
